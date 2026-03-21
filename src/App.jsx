@@ -1,644 +1,743 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-// Vercel proxy - CORS sorunu yok, direkt Polymarket API'sine bağlanır
-const API = "/api/polymarket";
+const API       = "/api/polymarket";
+const POLY_BASE = "https://polymarket.com";
 
 const CATEGORIES = ["OVERALL","POLITICS","SPORTS","CRYPTO","CULTURE","ECONOMICS","TECH","FINANCE"];
-const PERIODS = ["DAY","WEEK","MONTH","ALL"];
+const PERIODS    = ["DAY","WEEK","MONTH","ALL"];
 
+/* ── Themes ── */
+const LIGHT = { bg:"#f4f4f4", surface:"#ffffff", border:"#e2e2e2", text:"#111111", textMid:"#555555", textDim:"#aaaaaa" };
+const DARK  = { bg:"#0e0e0e", surface:"#161616", border:"#2a2a2a", text:"#eeeeee", textMid:"#888888", textDim:"#444444" };
+let C = LIGHT;
+
+/* ── Translations ── */
+const T = {
+  en: {
+    appName:          "POLY FEED",
+    appSub:           "SMART MONEY TRACKER",
+    live:             "LIVE",
+    refreshing:       "refreshing...",
+    agoSuffix:        " ago",
+    refresh:          "⟳",
+    search:           "Search",
+    searchPlaceholder:"search trader or market...",
+    clear:            "clear",
+    tabFeed:          "Live Feed",
+    tabTraders:       "Rankings",
+    tabNotifs:        (n) => `Notifications${n ? ` · ${n}` : ""}`,
+    catLabel:         "CATEGORY",
+    periodLabel:      "PERIOD",
+    colTrader:        "TRADER / MARKET",
+    colOutcome:       "SIDE",
+    colSize:          "SIZE",
+    colPnl:           "PNL",
+    colWhen:          "WHEN",
+    colRank:          "#",
+    colVol:           "VOLUME",
+    colWin:           "WIN%",
+    loading:          "Loading...",
+    noTrades:         "Loading feed...",
+    anonymous:        "Anonymous",
+    verified:         "✓",
+    activePositions:  "ACTIVE POSITIONS",
+    noPositions:      "No open positions found.",
+    viewOnPoly:       "View on Polymarket →",
+    notifFiltersTitle:"NOTIFICATION FILTERS — click to toggle",
+    notifRecords:     (n) => `${n} records`,
+    clearNotifs:      "Clear",
+    noNotifs:         "No notifications yet",
+    footerApi:        "Polymarket Data API · auto-refresh every 30s",
+    notifsOpen:       "·on",
+    notifsClosed:     "·off",
+    notifTypes: [
+      { key:"position",  label:"New Positions",  icon:"↗" },
+      { key:"pnl",       label:"PnL Changes",    icon:"±" },
+      { key:"newTrader", label:"New Traders",     icon:"+" },
+      { key:"whale",     label:"Large Trades",   icon:"◈" },
+    ],
+    notifMsgNewTrader: (name) => `New trader: ${name}`,
+    notifMsgPnl:       (name, val) => `${name}: PnL ${val}`,
+    notifMsgWhale:     (name, val) => `Large trade: ${name} ${val}`,
+    notifMsgPosition:  (name, mkt) => `${name} opened position: ${mkt}`,
+    darkMode:          "Dark mode",
+    lightMode:         "Light mode",
+    apiError:          "API connection failed — showing demo data.",
+    timeS: (n) => `${n}s`,
+    timeM: (n) => `${n}m`,
+    timeH: (n) => `${n}h`,
+    timeD: (n) => `${n}d`,
+  },
+  tr: {
+    appName:          "POLY FEED",
+    appSub:           "AKILLI PARA TAKİBİ",
+    live:             "CANLI",
+    refreshing:       "yükleniyor...",
+    agoSuffix:        " önce",
+    refresh:          "⟳",
+    search:           "Ara",
+    searchPlaceholder:"trader veya piyasa ara...",
+    clear:            "temizle",
+    tabFeed:          "Canlı Feed",
+    tabTraders:       "Sıralama",
+    tabNotifs:        (n) => `Bildirimler${n ? ` · ${n}` : ""}`,
+    catLabel:         "KATEGORİ",
+    periodLabel:      "DÖNEM",
+    colTrader:        "TRADER / PİYASA",
+    colOutcome:       "SONUÇ",
+    colSize:          "BOYUT",
+    colPnl:           "PNL",
+    colWhen:          "NE ZAMAN",
+    colRank:          "#",
+    colVol:           "VOLüM",
+    colWin:           "WIN%",
+    loading:          "Yükleniyor...",
+    noTrades:         "Feed yükleniyor...",
+    anonymous:        "Anonim",
+    verified:         "✓",
+    activePositions:  "AKTİF POZİSYONLAR",
+    noPositions:      "Açık pozisyon bulunamadı.",
+    viewOnPoly:       "Polymarket'ta görüntüle →",
+    notifFiltersTitle:"BİLDİRİM FİLTRELERİ — tıklayarak aç/kapat",
+    notifRecords:     (n) => `${n} kayıt`,
+    clearNotifs:      "Temizle",
+    noNotifs:         "Henüz bildirim yok",
+    footerApi:        "Polymarket Data API · 30s otomatik yenileme",
+    notifsOpen:       "·açık",
+    notifsClosed:     "·kapalı",
+    notifTypes: [
+      { key:"position",  label:"Yeni Pozisyonlar", icon:"↗" },
+      { key:"pnl",       label:"PnL Değişimi",     icon:"±" },
+      { key:"newTrader", label:"Yeni Traderlar",   icon:"+" },
+      { key:"whale",     label:"Büyük İşlemler",   icon:"◈" },
+    ],
+    notifMsgNewTrader: (name) => `Yeni trader: ${name}`,
+    notifMsgPnl:       (name, val) => `${name}: PnL ${val}`,
+    notifMsgWhale:     (name, val) => `Büyük işlem: ${name} ${val}`,
+    notifMsgPosition:  (name, mkt) => `${name} pozisyon açtı: ${mkt}`,
+    darkMode:          "Karanlık mod",
+    lightMode:         "Açık mod",
+    apiError:          "API bağlantısı kurulamadı — demo veri gösteriliyor.",
+    timeS: (n) => `${n}s`,
+    timeM: (n) => `${n}dk`,
+    timeH: (n) => `${n}sa`,
+    timeD: (n) => `${n}g`,
+  },
+};
+
+/* ── Helpers ── */
 function formatUSD(v) {
   if (!v && v !== 0) return "—";
-  const abs = Math.abs(v);
-  if (abs >= 1_000_000) return (v < 0 ? "-" : "") + "$" + (abs/1_000_000).toFixed(1) + "M";
-  if (abs >= 1_000) return (v < 0 ? "-" : "") + "$" + (abs/1_000).toFixed(1) + "K";
+  const abs = Math.abs(v), sign = v < 0 ? "-" : "";
+  if (abs >= 1_000_000) return sign + "$" + (abs/1_000_000).toFixed(1) + "M";
+  if (abs >= 1_000)     return sign + "$" + (abs/1_000).toFixed(1) + "K";
   return (v < 0 ? "-$" : "$") + abs.toFixed(0);
 }
 
-function timeAgo(ts) {
+function timeAgo(ts, t) {
   if (!ts) return "";
-  const diff = Date.now() - new Date(ts).getTime();
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return s + "s önce";
-  if (s < 3600) return Math.floor(s / 60) + "dk önce";
-  if (s < 86400) return Math.floor(s / 3600) + "sa önce";
-  return Math.floor(s / 86400) + "g önce";
+  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  if (s < 60)    return t.timeS(s)    + t.agoSuffix;
+  if (s < 3600)  return t.timeM(Math.floor(s/60))  + t.agoSuffix;
+  if (s < 86400) return t.timeH(Math.floor(s/3600)) + t.agoSuffix;
+  return t.timeD(Math.floor(s/86400)) + t.agoSuffix;
+}
+
+function TraderAvatar({ trader, size = 34 }) {
+  const name  = trader?.userName || trader?.proxyWallet?.slice(2,5) || "?";
+  const seed  = [...name].reduce((a,c) => a + c.charCodeAt(0), 0);
+  const shade = 160 + (seed % 80);
+  return trader?.profileImage ? (
+    <img src={trader.profileImage} alt={name}
+      style={{ width:size, height:size, borderRadius:"50%", objectFit:"cover",
+        border:`1px solid ${C.border}`, flexShrink:0 }} />
+  ) : (
+    <div style={{
+      width:size, height:size, borderRadius:"50%", flexShrink:0,
+      background:`rgb(${shade},${shade},${shade})`,
+      border:`1px solid ${C.border}`,
+      display:"flex", alignItems:"center", justifyContent:"center",
+      fontSize:size*0.35, fontWeight:700, color:"#fff",
+      fontFamily:"'DM Mono',monospace",
+    }}>{name.slice(0,2).toUpperCase()}</div>
+  );
 }
 
 function PnlBadge({ val }) {
-  const pos = val >= 0;
   return (
-    <span style={{
-      background: pos ? "rgba(0,230,118,0.12)" : "rgba(255,70,85,0.12)",
-      color: pos ? "#00e676" : "#ff4655",
-      border: `1px solid ${pos ? "#00e67640" : "#ff465540"}`,
-      borderRadius: 6, padding: "2px 8px",
-      fontFamily: "'IBM Plex Mono', monospace",
-      fontSize: 13, fontWeight: 700, letterSpacing: "0.02em"
-    }}>
-      {pos ? "▲" : "▼"} {formatUSD(val)}
+    <span style={{ fontFamily:"'DM Mono',monospace", fontSize:12, fontWeight:500,
+      color: val >= 0 ? C.text : C.textMid }}>
+      {val >= 0 ? "+" : "−"}{formatUSD(Math.abs(val))}
     </span>
   );
 }
 
-function TraderAvatar({ trader, size = 40 }) {
-  const [imgError, setImgError] = useState(false);
-  const name = trader.userName || trader.proxyWallet?.slice(2, 6) || "??";
-  const seed = name.charCodeAt(0) * 31 + (name.charCodeAt(1) || 7);
-  const hue = seed % 360;
-  return (trader.profileImage && !imgError) ? (
-    <img src={trader.profileImage} alt={name}
-      onError={() => setImgError(true)}
-      style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", border: "2px solid #1e2535", flexShrink: 0 }} />
-  ) : (
-    <div style={{
-      width: size, height: size, borderRadius: "50%",
-      background: `linear-gradient(135deg, hsl(${hue},70%,45%), hsl(${(hue + 60) % 360},80%,35%))`,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700,
-      color: "#fff", fontSize: size * 0.4, border: "2px solid #1e2535", flexShrink: 0
-    }}>
-      {name.slice(0, 2).toUpperCase()}
-    </div>
-  );
+
+
+function generateDemo() {
+  const names = ["CryptoProphet","PredictKing","MarketWizard","AlphaTrader",
+    "WhaleHunter","ProbMaster","EdgeFinder","SharpMoney","ValueBet","InfoEdge","ContraFlow","SmartMoneyX"];
+  return names.map((name,i) => ({
+    rank: String(i+1),
+    proxyWallet: "0x"+[...Array(40)].map(()=>"0123456789abcdef"[Math.floor(Math.random()*16)]).join(""),
+    userName: name, verifiedBadge: Math.random()>0.6,
+    pnl: (Math.random()*500000+5000)*(Math.random()>0.15?1:-1),
+    vol: Math.random()*2_000_000+50_000,
+    winRate: Math.random()*0.35+0.55,
+  }));
 }
 
+/* ── Demo market data (module-level, stable reference) ── */
+const DEMO_MARKETS = [
+  { title:"Fed rate cut in May 2025?",        titleTr:"Fed Mayıs'ta faiz indirir mi?",   slug:"fed-rate-cut-may-2025" },
+  { title:"Bitcoin >$100K by June?",           titleTr:"Bitcoin Haziran'da >$100K?",       slug:"bitcoin-100k-june-2025" },
+  { title:"Trump approval >50% in Q2?",        titleTr:"Trump onay oranı Q2'de >50%?",    slug:"trump-approval-q2-2025" },
+  { title:"AI regulation passed in 2025?",     titleTr:"2025'te AI düzenlemesi gelir mi?", slug:"ai-regulation-2025" },
+  { title:"Nvidia exceeds $200?",              titleTr:"Nvidia $200'ı aşar mı?",           slug:"nvidia-200-2025" },
+  { title:"France in Euro 2025 final?",        titleTr:"Euro 2025 finalinde Fransa?",      slug:"euro-2025-france-final" },
+];
+
+/* ══════════════════════════════════════════════ */
 export default function App() {
-  const [traders, setTraders] = useState([]);
-  const [positions, setPositions] = useState({});
-  const [feed, setFeed] = useState([]);
-  const [category, setCategory] = useState("OVERALL");
-  const [period, setPeriod] = useState("WEEK");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [expandedTrader, setExpandedTrader] = useState(null);
-  const [notifications, setNotifications] = useState([]);
-  const [notifEnabled, setNotifEnabled] = useState(true);
-  const [notifLog, setNotifLog] = useState([]);
-  const [lastUpdate, setLastUpdate] = useState(null);
-  const [pulse, setPulse] = useState(false);
-  const [tab, setTab] = useState("feed");
-  const prevTradersRef = useRef([]);
-  const notifIdRef = useRef(0);
+  const [dark, setDark]     = useState(() => typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches);
+  const [lang, setLang]     = useState("en"); // default: English
+  C = dark ? DARK : LIGHT;
+  const t = T[lang];
 
-  const notifEnabledRef = useRef(true);
-  const addNotif = useCallback((msg, type = "info", trader = null) => {
-    if (!notifEnabledRef.current) return;
-    const id = ++notifIdRef.current;
+  const [traders, setTraders]           = useState([]);
+  const [positions, setPositions]       = useState({});
+  const [feed, setFeed]                 = useState([]);
+  const [category, setCategory]         = useState("OVERALL");
+  const [period, setPeriod]             = useState("WEEK");
+  const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState(null);
+  const [expandedTrader, setExpanded]   = useState(null);
+  const [toasts, setToasts]             = useState([]);
+  const [notifLog, setNotifLog]         = useState([]);
+  const [notifFilters, setNotifFilters] = useState({ position:true, pnl:true, newTrader:true, whale:true });
+  const [lastUpdate, setLastUpdate]     = useState(null);
+  const [tab, setTab]                   = useState("feed");
+  const [searchInput, setSearchInput]   = useState("");
+  const [search, setSearch]             = useState("");
+  const prevRef = useRef([]);
+  const notifId  = useRef(0);
+  const langRef  = useRef(lang);
+  useEffect(() => { langRef.current = lang; }, [lang]);
+
+  /* ── notifications ── */
+  const addNotif = useCallback((msg, type, trader = null) => {
+    const key = { position:"position", profit:"pnl", loss:"pnl", new:"newTrader", whale:"whale" }[type];
+    if (key && !notifFilters[key]) return;
+    const id = ++notifId.current;
     const item = { id, msg, type, trader, ts: new Date() };
-    setNotifications(n => [item, ...n].slice(0, 5));
-    setNotifLog(l => [item, ...l].slice(0, 100));
-    setTimeout(() => setNotifications(n => n.filter(x => x.id !== id)), 5000);
-  }, []);
+    setToasts(prev => [item, ...prev].slice(0, 4));
+    setNotifLog(prev => [item, ...prev].slice(0, 100));
+    setTimeout(() => setToasts(prev => prev.filter(x => x.id !== id)), 5000);
+  }, [notifFilters]);
 
+  /* ── leaderboard ── */
   const fetchLeaderboard = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
-      const res = await fetch(
-        `${API}/v1/leaderboard?category=${category}&timePeriod=${period}&orderBy=PNL&limit=20`
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const raw = await res.json();
-      const list = Array.isArray(raw) ? raw : [];
-      if (list.length === 0) throw new Error("Boş yanıt");
-
-      // Yeni trader tespiti
-      const prevWallets = new Set(prevTradersRef.current.map(t => t.proxyWallet));
-      list.forEach(t => {
-        if (!prevWallets.has(t.proxyWallet) && prevTradersRef.current.length > 0) {
-          addNotif(`🆕 Yeni trader: ${t.userName || t.proxyWallet?.slice(0, 10)}`, "new", t);
+      const res = await fetch(`${API}/v1/leaderboard?category=${category}&timePeriod=${period}&orderBy=PNL&limit=20`);
+      if (!res.ok) throw new Error();
+      const list = await res.json();
+      const prevMap = Object.fromEntries(prevRef.current.map(tr => [tr.proxyWallet, tr]));
+      const prevSet = new Set(prevRef.current.map(tr => tr.proxyWallet));
+      // Use current lang translations for notifications
+      const tCurr = T[langRef.current];
+      list.forEach(tr => {
+        const name = tr.userName || tr.proxyWallet?.slice(0,10);
+        if (!prevSet.has(tr.proxyWallet) && prevRef.current.length)
+          addNotif(tCurr.notifMsgNewTrader(name), "new", tr);
+        const prev = prevMap[tr.proxyWallet];
+        if (prev) {
+          const diff = (tr.pnl||0) - (prev.pnl||0);
+          if (Math.abs(diff) > 1000)
+            addNotif(tCurr.notifMsgPnl(name, (diff>0?"+":"")+formatUSD(diff)), diff>0?"profit":"loss", tr);
+          if (Math.abs(diff) > 10000)
+            addNotif(tCurr.notifMsgWhale(name, formatUSD(diff)), "whale", tr);
         }
       });
-
-      // PnL değişim tespiti
-      const prevMap = Object.fromEntries(prevTradersRef.current.map(t => [t.proxyWallet, t]));
-      list.forEach(t => {
-        const prev = prevMap[t.proxyWallet];
-        if (prev && t.pnl !== prev.pnl) {
-          const diff = t.pnl - prev.pnl;
-          if (Math.abs(diff) > 500) {
-            addNotif(
-              `💰 ${t.userName || t.proxyWallet?.slice(0, 10)}: PnL ${diff > 0 ? "+" : ""}${formatUSD(diff)}`,
-              diff > 0 ? "profit" : "loss", t
-            );
-          }
-        }
-      });
-
-      prevTradersRef.current = list;
+      prevRef.current = list;
       setTraders(list);
       setLastUpdate(new Date());
-      setPulse(true);
-      setTimeout(() => setPulse(false), 800);
-    } catch (e) {
-      setError("API bağlantısı kurulamadı — demo veri gösteriliyor.");
-      setTraders(generateDemoData());
+    } catch {
+      setError(T[langRef.current].apiError);
+      setTraders(generateDemo());
       setLastUpdate(new Date());
-    } finally {
-      setLoading(false);
-    }
-  }, [category, period, addNotif]);
+    } finally { setLoading(false); }
+  }, [category, period, addNotif]); // lang handled via langRef to avoid interval restart
 
-  const tradersRef = useRef([]);
-  useEffect(() => { tradersRef.current = traders; }, [traders]);
-
+  /* ── positions ── */
   const fetchPositions = useCallback(async (wallet) => {
     try {
       const res = await fetch(`${API}/v1/positions?user=${wallet}&sizeThreshold=0.01&limit=10`);
       if (!res.ok) throw new Error();
       const data = await res.json();
-      const list = Array.isArray(data) ? data : (data.results || data.data || []);
+      const list = Array.isArray(data) ? data : (data.results || []);
       setPositions(p => ({ ...p, [wallet]: list }));
-
-      list.slice(0, 3).forEach(pos => {
-        const trader = tradersRef.current.find(t => t.proxyWallet === wallet);
-        const itemId = `${wallet}-${pos.conditionId || pos.marketId || pos.market || ""}-${pos.outcome || ""}`;
+      const tCurr = T[langRef.current];
+      list.slice(0,3).forEach(pos => {
+        const trader = traders.find(tr => tr.proxyWallet === wallet);
         const item = {
-          id: itemId,
-          trader,
-          market: pos.title || pos.market || "Market",
-          outcome: pos.outcome || (pos.currentValue > 0.5 ? "YES" : "NO"),
-          size: pos.currentValue || pos.size || 0,
-          price: pos.price || pos.avgPrice || 0,
-          pnl: pos.cashPnl || pos.pnl || 0,
-          ts: pos.startDate || new Date().toISOString(),
-          isNew: true,
+          id: `${wallet}-${pos.conditionId||Math.random()}`,
+          trader, wallet,
+          market:     pos.title || pos.market || "Market",
+          marketSlug: pos.slug  || null, // conditionId is a hex hash, NOT a URL slug
+          outcome:    pos.outcome || (pos.currentValue > 0.5 ? "YES" : "NO"),
+          size:       pos.currentValue || pos.size  || 0,
+          price:      pos.price        || pos.avgPrice || 0,
+          pnl:        pos.cashPnl      || pos.pnl  || 0,
+          ts:         pos.startDate    || new Date().toISOString(),
         };
-        setFeed(f => f.some(x => x.id === item.id) ? f : [item, ...f].slice(0, 60));
+        setFeed(f => f.some(x => x.id === item.id) ? f : [item, ...f].slice(0,80));
+        addNotif(tCurr.notifMsgPosition(trader?.userName || wallet.slice(0,10), item.market.slice(0,45)), "position", trader);
       });
-    } catch {
-      // sessiz hata
-    }
-  }, []);
+    } catch {}
+  }, [traders, addNotif]); // lang handled via langRef
 
-  // İlk yükleme + 30s yenileme
-  useEffect(() => {
-    fetchLeaderboard();
-    const t = setInterval(fetchLeaderboard, 30_000);
-    return () => clearInterval(t);
-  }, [fetchLeaderboard]);
+  /* generateDemo moved to module level */
 
-  // Top 5 trader'ın pozisyonlarını çek
-  useEffect(() => {
-    if (traders.length === 0) return;
-    traders.slice(0, 5).forEach(t => fetchPositions(t.proxyWallet));
-  }, [traders]);
 
-  // Demo feed güncellemesi (gerçek pozisyon yokken)
+
   useEffect(() => {
-    if (traders.length === 0) return;
-    const t = setInterval(() => {
-      const trader = traders[Math.floor(Math.random() * Math.min(5, traders.length))];
+    if (!traders.length) return;
+    const interval = setInterval(() => {
+      const trader = traders[Math.floor(Math.random()*Math.min(5,traders.length))];
       if (!trader) return;
-      const markets = [
-        "Fed Mayıs'ta faiz indirir mi?", "Trump onay oranı Q2'de >50%?",
-        "Bitcoin Haziran'da >$100K?", "2025'te AI düzenlemesi gelir mi?",
-        "SpaceX Starship orbital başarı?", "Temmuz'da ateşkes?",
-        "Euro Cup 2025 finalinde kim?", "Nvidia $200'ı aşar mı?",
-      ];
+      const m = DEMO_MARKETS[Math.floor(Math.random()*DEMO_MARKETS.length)];
+      const tCurr = T[langRef.current];
+      const title = langRef.current === "tr" ? m.titleTr : m.title;
       const item = {
         id: `sim-${Date.now()}-${Math.random()}`,
-        trader,
-        market: markets[Math.floor(Math.random() * markets.length)],
-        outcome: Math.random() > 0.5 ? "YES" : "NO",
-        size: Math.random() * 50000 + 500,
-        price: Math.random() * 0.8 + 0.1,
-        pnl: (Math.random() - 0.4) * 8000,
-        ts: new Date().toISOString(),
-        isNew: true,
+        trader, wallet: trader.proxyWallet,
+        market: title, marketSlug: m.slug,
+        outcome: Math.random()>0.5?"YES":"NO",
+        size:  Math.random()*50000+500,
+        price: Math.random()*0.8+0.1,
+        pnl:   (Math.random()-0.4)*8000,
+        ts:    new Date().toISOString(), isNew:true,
       };
-      setFeed(f => [item, ...f].slice(0, 60));
-      addNotif(
-        `📊 ${trader.userName || trader.proxyWallet?.slice(0, 10)} pozisyon açtı: ${item.market}`,
-        "position", trader
-      );
-    }, 12_000);
-    return () => clearInterval(t);
-  }, [traders, addNotif]);
+      setFeed(f => [item,...f].slice(0,80));
+      addNotif(tCurr.notifMsgPosition(trader.userName||trader.proxyWallet?.slice(0,10), title), "position", trader);
+    }, 10_000);
+    return () => clearInterval(interval);
+  }, [traders, addNotif]); // lang handled via langRef
 
-  function generateDemoData() {
-    const names = ["CryptoProphet","PredictKing","MarketWizard","AlphaTrader",
-      "WhaleHunter","ProbMaster","EdgeFinder","SharpMoney",
-      "ValueBet","InfoEdge","ContraFlow","SmartMoneyX"];
-    return names.map((name, i) => ({
-      rank: String(i + 1),
-      proxyWallet: "0x" + Array.from({length:40}, () => "0123456789abcdef"[Math.floor(Math.random()*16)]).join(""),
-      userName: name,
-      pnl: (Math.random() * 500000 + 10000) * (Math.random() > 0.15 ? 1 : -1),
-      vol: Math.random() * 2_000_000 + 100_000,
-      verifiedBadge: Math.random() > 0.6,
-      winRate: Math.random() * 0.35 + 0.55,
-    }));
-  }
+  useEffect(() => { fetchLeaderboard(); const iv = setInterval(fetchLeaderboard, 30_000); return () => clearInterval(iv); }, [fetchLeaderboard]);
+  useEffect(() => { if (traders.length) traders.slice(0,5).forEach(tr => fetchPositions(tr.proxyWallet)); }, [traders]);
 
-  const notifColor = {
-    info: "#60a5fa", new: "#a78bfa", profit: "#00e676",
-    loss: "#ff4655", position: "#fbbf24"
-  };
+  /* ── filtered lists ── */
+  const q = search.toLowerCase();
+  const filteredTraders = traders.filter(tr =>
+    !q || (tr.userName||"").toLowerCase().includes(q) || (tr.proxyWallet||"").toLowerCase().includes(q)
+  );
+  const filteredFeed = feed.filter(item =>
+    !q || (item.market||"").toLowerCase().includes(q) || (item.trader?.userName||"").toLowerCase().includes(q)
+  );
+
+  const traderLink = (wallet) => `${POLY_BASE}/profile/${wallet}`;
+  const marketLink = (slug)   => slug ? `${POLY_BASE}/event/${slug}` : "#";
+
+  /* ── lang toggle button style ── */
+  const langBtn = (active) => ({
+    background: active ? C.text : "none",
+    border: `1px solid ${active ? C.text : C.border}`,
+    borderRadius: 4,
+    padding: "3px 9px",
+    fontSize: 10, fontWeight: 700,
+    color: active ? (dark ? "#111" : "#fff") : C.textMid,
+    fontFamily: "'DM Mono',monospace",
+    cursor: "pointer",
+    transition: "all 0.15s",
+  });
 
   return (
-    <div style={{ minHeight: "100vh", background: "#060b14", fontFamily: "'IBM Plex Mono','Courier New',monospace", color: "#e2e8f0" }}>
+    <div style={{ minHeight:"100vh", background:C.bg,
+      fontFamily:"'DM Mono','Courier New',monospace", color:C.text,
+      "--hover-bg": dark ? "#1f1f1f" : "#f9f9f9" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Syne:wght@700;800&display=swap');
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #060b14; }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: #0d1421; }
-        ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 2px; }
-        @keyframes fadeIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
-        @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
-        @keyframes slideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
-        .feed-item { animation: slideIn 0.35s ease; }
-        .row-hover:hover { background: rgba(30,53,95,0.45) !important; cursor: pointer; }
-        .filter-btn, .tab-btn { transition: all 0.15s; }
-        .filter-btn:hover, .tab-btn:hover { opacity: 0.8; }
+        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@500;600;700&display=swap');
+        *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+        a { color:inherit; text-decoration:none; }
+        a:hover { text-decoration:underline; text-decoration-color:#aaa; }
+        @keyframes fadeDown { from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes blink    { 0%,100%{opacity:1} 50%{opacity:0.2} }
+        @keyframes slideUp  { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+        .hrow:hover  { background:var(--hover-bg) !important; }
+        .pill:hover  { background:${C.text} !important; color:${dark?"#111":"#fff"} !important; border-color:${C.text} !important; }
+        .tab:hover   { color:${C.text} !important; }
+        input:focus  { outline:none; }
+        button       { cursor:pointer; }
+        ::-webkit-scrollbar { width:3px; }
+        ::-webkit-scrollbar-thumb { background:${C.border}; }
       `}</style>
 
-      {/* Toast bildirimleri */}
-      <div style={{ position:"fixed", top:16, right:16, zIndex:9999, display:"flex", flexDirection:"column", gap:8, width:310 }}>
-        {notifications.map(n => (
+      {/* ── Toasts ── */}
+      <div style={{ position:"fixed", top:14, right:14, zIndex:9999,
+        display:"flex", flexDirection:"column", gap:6, width:290 }}>
+        {toasts.map(n => (
           <div key={n.id} style={{
-            background:"rgba(13,20,33,0.97)", border:`1px solid ${notifColor[n.type]}40`,
-            borderLeft:`3px solid ${notifColor[n.type]}`, borderRadius:8,
-            padding:"10px 14px", animation:"fadeIn 0.3s ease",
-            backdropFilter:"blur(10px)", boxShadow:"0 4px 20px rgba(0,0,0,0.5)", fontSize:12
+            background:C.surface, border:`1px solid ${C.border}`,
+            borderLeft:`3px solid ${C.text}`, borderRadius:6,
+            padding:"9px 13px", animation:"fadeDown 0.2s ease",
+            boxShadow:"0 2px 10px rgba(0,0,0,0.1)"
           }}>
-            <div style={{ color:notifColor[n.type], fontWeight:600 }}>{n.msg}</div>
-            <div style={{ color:"#4a5568", marginTop:2, fontSize:10 }}>{timeAgo(n.ts)}</div>
+            <div style={{ fontSize:12, color:C.text, lineHeight:1.4 }}>{n.msg}</div>
+            <div style={{ fontSize:10, color:C.textDim, marginTop:3 }}>{timeAgo(n.ts, t)}</div>
           </div>
         ))}
       </div>
 
-      {/* Header */}
-      <div style={{
-        background:"linear-gradient(180deg,#0d1421 0%,#060b14 100%)",
-        borderBottom:"1px solid #1e3a5f", padding:"14px 24px",
-        display:"flex", alignItems:"center", justifyContent:"space-between",
-        position:"sticky", top:0, zIndex:100, backdropFilter:"blur(12px)"
-      }}>
-        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-          <div style={{
-            background:"linear-gradient(135deg,#00e676,#00b0ff)",
-            borderRadius:10, width:36, height:36,
-            display:"flex", alignItems:"center", justifyContent:"center",
-            fontSize:18, boxShadow:"0 0 16px #00e67660"
-          }}>⚡</div>
-          <div>
-            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:20, fontWeight:800,
-              background:"linear-gradient(90deg,#e2e8f0,#60a5fa)",
-              WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>POLY FEED</div>
-            <div style={{ color:"#4a6a8a", fontSize:10, letterSpacing:"0.15em" }}>SMART MONEY TRACKER</div>
-          </div>
-        </div>
+      {/* ── Header ── */}
+      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`,
+        padding:"11px 20px", display:"flex", alignItems:"center", justifyContent:"space-between",
+        position:"sticky", top:0, zIndex:100 }}>
 
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6, background:"#0d1421",
-            border:"1px solid #1e3a5f", borderRadius:20, padding:"5px 12px" }}>
-            <div style={{ width:7, height:7, borderRadius:"50%", background:"#00e676",
-              animation:"pulse 2s infinite", boxShadow:"0 0 8px #00e676" }} />
-            <span style={{ fontSize:11, color:"#00e676", fontWeight:600 }}>LIVE</span>
+        {/* Left: logo + live */}
+        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+          <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:16, fontWeight:700,
+            letterSpacing:"-0.04em" }}>{t.appName}</span>
+          <div style={{ display:"flex", alignItems:"center", gap:5,
+            border:`1px solid ${C.border}`, borderRadius:20, padding:"2px 9px" }}>
+            <div style={{ width:5, height:5, borderRadius:"50%", background:C.text,
+              animation:"blink 2.5s infinite" }} />
+            <span style={{ fontSize:9, fontWeight:600, letterSpacing:"0.1em" }}>{t.live}</span>
           </div>
           {lastUpdate && (
-            <div style={{ fontSize:10, color:"#4a6a8a" }}>
-              {pulse ? "⟳ Güncelleniyor..." : `↻ ${timeAgo(lastUpdate)}`}
-            </div>
+            <span style={{ fontSize:10, color:C.textDim }}>
+              {loading ? t.refreshing : `↻ ${timeAgo(lastUpdate, t)}`}
+            </span>
           )}
-          <button onClick={() => { setNotifEnabled(x => { notifEnabledRef.current = !x; return !x; }); }} style={{
-            background: notifEnabled ? "rgba(0,230,118,0.1)" : "rgba(255,70,85,0.1)",
-            border:`1px solid ${notifEnabled ? "#00e67640" : "#ff465540"}`,
-            borderRadius:8, padding:"6px 12px", cursor:"pointer",
-            color: notifEnabled ? "#00e676" : "#ff4655",
-            fontSize:12, fontWeight:600, fontFamily:"'IBM Plex Mono',monospace"
-          }}>
-            {notifEnabled ? "🔔 ON" : "🔕 OFF"}
+        </div>
+
+        {/* Right: search + lang + dark + refresh */}
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          {/* Search */}
+          <div style={{ display:"flex", alignItems:"center", gap:6,
+            background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"5px 10px" }}>
+            <span style={{ fontSize:12, color:C.textDim }}>⌕</span>
+            <input value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              onKeyDown={e => { if (e.key==="Enter") setSearch(searchInput); }}
+              placeholder={t.searchPlaceholder}
+              style={{ background:"none", border:"none", fontSize:11, color:C.text,
+                fontFamily:"'DM Mono',monospace", width:170 }} />
+            {searchInput && (
+              <button onClick={() => { setSearch(""); setSearchInput(""); }}
+                style={{ background:"none", border:"none", color:C.textDim, fontSize:12 }}>✕</button>
+            )}
+            <button onClick={() => setSearch(searchInput)} style={{
+              background:C.text, border:"none", borderRadius:4, padding:"2px 9px",
+              color: dark ? "#111" : "#fff", fontSize:10,
+              fontFamily:"'DM Mono',monospace", fontWeight:500
+            }}>{t.search}</button>
+          </div>
+
+          {/* Language toggle */}
+          <div style={{ display:"flex", alignItems:"center", gap:2,
+            border:`1px solid ${C.border}`, borderRadius:6, padding:2 }}>
+            <button onClick={() => setLang("en")} style={langBtn(lang==="en")}>EN</button>
+            <button onClick={() => setLang("tr")} style={langBtn(lang==="tr")}>TR</button>
+          </div>
+
+          {/* Dark mode toggle */}
+          <button onClick={() => setDark(d => !d)} style={{
+            background:"none", border:`1px solid ${C.border}`, borderRadius:6,
+            padding:"5px 10px", fontSize:13, color:C.textMid, transition:"all 0.2s"
+          }} title={dark ? t.lightMode : t.darkMode}>
+            {dark ? "☀" : "☾"}
           </button>
+
+          {/* Refresh */}
           <button onClick={fetchLeaderboard} disabled={loading} style={{
-            background:"rgba(96,165,250,0.1)", border:"1px solid #60a5fa40",
-            borderRadius:8, padding:"6px 12px", cursor: loading ? "not-allowed" : "pointer",
-            color:"#60a5fa", fontSize:12, fontWeight:600,
-            fontFamily:"'IBM Plex Mono',monospace", opacity: loading ? 0.5 : 1
-          }}>{loading ? "↻" : "⟳"} YENİLE</button>
+            background:"none", border:`1px solid ${C.border}`, borderRadius:6,
+            padding:"5px 11px", fontSize:10, color:C.textMid,
+            fontFamily:"'DM Mono',monospace", opacity: loading ? 0.4 : 1
+          }}>{t.refresh}</button>
         </div>
       </div>
 
+      {/* Error */}
       {error && (
-        <div style={{ background:"rgba(251,191,36,0.08)", borderBottom:"1px solid #fbbf2440",
-          padding:"8px 24px", fontSize:12, color:"#fbbf24", textAlign:"center" }}>
-          ⚠ {error}
+        <div style={{ background:C.bg, borderBottom:`1px solid ${C.border}`,
+          padding:"6px 20px", fontSize:10, color:C.textMid, textAlign:"center" }}>
+          {error}
         </div>
       )}
 
-      {/* Tabs */}
-      <div style={{ borderBottom:"1px solid #1e3a5f", padding:"0 24px",
-        display:"flex", background:"#0a1020" }}>
+      {/* ── Tabs ── */}
+      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`,
+        padding:"0 20px", display:"flex" }}>
         {[
-          { key:"feed", label:"📡 Canlı Feed" },
-          { key:"traders", label:"🏆 Trader Sıralaması" },
-          { key:"notifications", label:`🔔 Bildirimler${notifLog.length > 0 ? ` (${notifLog.length})` : ""}` }
-        ].map(t => (
-          <button key={t.key} className="tab-btn" onClick={() => setTab(t.key)} style={{
-            background:"none", border:"none",
-            borderBottom:`2px solid ${tab === t.key ? "#60a5fa" : "transparent"}`,
-            padding:"12px 20px", cursor:"pointer",
-            color: tab === t.key ? "#60a5fa" : "#4a6a8a",
-            fontFamily:"'IBM Plex Mono',monospace", fontSize:13,
-            fontWeight: tab === t.key ? 700 : 400
-          }}>{t.label}</button>
+          { key:"feed",          label: t.tabFeed },
+          { key:"traders",       label: t.tabTraders },
+          { key:"notifications", label: t.tabNotifs(notifLog.length) },
+        ].map(tb => (
+          <button key={tb.key} className="tab" onClick={() => setTab(tb.key)} style={{
+            background:"none", border:"none", padding:"10px 16px",
+            fontSize:11, fontWeight:600, letterSpacing:"0.02em",
+            color: tab===tb.key ? C.text : C.textDim,
+            borderBottom:`2px solid ${tab===tb.key ? C.text : "transparent"}`,
+            fontFamily:"'DM Mono',monospace", transition:"all 0.12s"
+          }}>{tb.label}</button>
         ))}
       </div>
 
-      {/* Filters */}
-      <div style={{ padding:"10px 24px", background:"#080f1a", borderBottom:"1px solid #1a2940",
-        display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
-        <span style={{ color:"#4a6a8a", fontSize:11, marginRight:4 }}>KATEGORİ:</span>
+      {/* ── Filters ── */}
+      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`,
+        padding:"7px 20px", display:"flex", gap:5, flexWrap:"wrap", alignItems:"center" }}>
+        <span style={{ fontSize:9, color:C.textDim, letterSpacing:"0.1em", marginRight:2 }}>{t.catLabel}</span>
         {CATEGORIES.map(c => (
-          <button key={c} className="filter-btn" onClick={() => setCategory(c)} style={{
-            background: category === c ? "rgba(96,165,250,0.15)" : "transparent",
-            border:`1px solid ${category === c ? "#60a5fa" : "#1e3a5f"}`,
-            borderRadius:6, padding:"3px 9px", cursor:"pointer",
-            color: category === c ? "#60a5fa" : "#4a6a8a",
-            fontFamily:"'IBM Plex Mono',monospace", fontSize:11, fontWeight:600
+          <button key={c} className="pill" onClick={() => setCategory(c)} style={{
+            background: category===c ? C.text : "none",
+            border:`1px solid ${category===c ? C.text : C.border}`,
+            borderRadius:20, padding:"2px 9px",
+            color: category===c ? (dark?"#111":"#fff") : C.textMid,
+            fontSize:9, fontWeight:500, fontFamily:"'DM Mono',monospace", transition:"all 0.12s"
           }}>{c}</button>
         ))}
-        <span style={{ color:"#4a6a8a", fontSize:11, marginLeft:8, marginRight:4 }}>DÖNEM:</span>
+        <div style={{ width:1, height:12, background:C.border, margin:"0 3px" }} />
+        <span style={{ fontSize:9, color:C.textDim, letterSpacing:"0.1em", marginRight:2 }}>{t.periodLabel}</span>
         {PERIODS.map(p => (
-          <button key={p} className="filter-btn" onClick={() => setPeriod(p)} style={{
-            background: period === p ? "rgba(167,139,250,0.15)" : "transparent",
-            border:`1px solid ${period === p ? "#a78bfa" : "#1e3a5f"}`,
-            borderRadius:6, padding:"3px 9px", cursor:"pointer",
-            color: period === p ? "#a78bfa" : "#4a6a8a",
-            fontFamily:"'IBM Plex Mono',monospace", fontSize:11, fontWeight:600
+          <button key={p} className="pill" onClick={() => setPeriod(p)} style={{
+            background: period===p ? C.text : "none",
+            border:`1px solid ${period===p ? C.text : C.border}`,
+            borderRadius:20, padding:"2px 9px",
+            color: period===p ? (dark?"#111":"#fff") : C.textMid,
+            fontSize:9, fontWeight:500, fontFamily:"'DM Mono',monospace", transition:"all 0.12s"
           }}>{p}</button>
         ))}
+        {search && (
+          <div style={{ marginLeft:"auto", fontSize:10, color:C.textMid }}>
+            "{search}" &nbsp;
+            <button onClick={() => { setSearch(""); setSearchInput(""); }}
+              style={{ background:"none", border:"none", fontSize:10, color:C.textDim }}>
+              ✕ {t.clear}
+            </button>
+          </div>
+        )}
       </div>
 
-      <div style={{ padding:"20px 24px", maxWidth:1100, margin:"0 auto" }}>
+      {/* ── Content ── */}
+      <div style={{ padding:"16px 20px", maxWidth:1080, margin:"0 auto" }}>
 
-        {/* FEED */}
+        {/* ════ FEED ════ */}
         {tab === "feed" && (
           <div>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-              <div style={{ fontSize:12, color:"#4a6a8a" }}>
-                <span style={{ color:"#60a5fa" }}>{feed.length}</span> işlem · her 12s güncellenir
-              </div>
+            <div style={{ fontSize:10, color:C.textDim, marginBottom:10 }}>
+              {filteredFeed.length} · {lang==="en" ? "updates every 10s" : "her 10s güncellenir"}
             </div>
-            {feed.length === 0 ? (
-              <div style={{ textAlign:"center", padding:"60px 20px", color:"#2d4a6a" }}>
-                <div style={{ fontSize:40, marginBottom:12 }}>📡</div>
-                <div>Feed yükleniyor...</div>
-              </div>
-            ) : (
-              <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
-                {feed.map((item) => (
-                  <div key={item.id} className="feed-item row-hover" style={{
-                    background: item.isNew ? "rgba(96,165,250,0.05)" : "rgba(13,20,33,0.8)",
-                    border:`1px solid ${item.isNew ? "#60a5fa25" : "#1a2940"}`,
-                    borderLeft:`3px solid ${item.pnl >= 0 ? "#00e676" : "#ff4655"}`,
-                    borderRadius:10, padding:"11px 15px",
-                    display:"flex", alignItems:"center", gap:13, transition:"all 0.2s"
-                  }}>
-                    <TraderAvatar trader={item.trader || {}} size={36} />
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:2 }}>
-                        <span style={{ fontWeight:700, fontSize:13, color:"#e2e8f0" }}>
-                          {item.trader?.userName || item.trader?.proxyWallet?.slice(0,12) || "Anonim"}
-                        </span>
-                        {item.trader?.verifiedBadge && <span style={{ color:"#60a5fa", fontSize:10 }}>✓</span>}
-                        <span style={{ fontSize:10, color:"#2d4a6a" }}>#{item.trader?.rank}</span>
-                      </div>
-                      <div style={{ fontSize:12, color:"#60a5fa", whiteSpace:"nowrap",
-                        overflow:"hidden", textOverflow:"ellipsis", maxWidth:360 }}>
-                        {item.market}
-                      </div>
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-                      <span style={{
-                        background: item.outcome === "YES" ? "rgba(0,230,118,0.12)" : "rgba(255,70,85,0.12)",
-                        color: item.outcome === "YES" ? "#00e676" : "#ff4655",
-                        border:`1px solid ${item.outcome === "YES" ? "#00e67640" : "#ff465540"}`,
-                        borderRadius:6, padding:"2px 10px", fontSize:12, fontWeight:700
-                      }}>{item.outcome}</span>
-                      <div style={{ textAlign:"right" }}>
-                        <div style={{ fontSize:13, color:"#e2e8f0", fontWeight:600 }}>{formatUSD(item.size)}</div>
-                        <div style={{ fontSize:10, color: item.pnl >= 0 ? "#00e676" : "#ff4655" }}>
-                          {item.pnl >= 0 ? "+" : ""}{formatUSD(item.pnl)}
-                        </div>
-                      </div>
-                      <div style={{ fontSize:10, color:"#2d4a6a", textAlign:"right", minWidth:48 }}>
-                        <div>{Math.round(item.price * 100)}¢</div>
-                        <div>{timeAgo(item.ts)}</div>
-                      </div>
-                    </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 60px 90px 90px 60px",
+              padding:"5px 14px", fontSize:9, color:C.textDim, letterSpacing:"0.08em",
+              borderBottom:`1px solid ${C.border}`, background:C.surface }}>
+              <span>{t.colTrader}</span>
+              <span style={{ textAlign:"center" }}>{t.colOutcome}</span>
+              <span style={{ textAlign:"right" }}>{t.colSize}</span>
+              <span style={{ textAlign:"right" }}>{t.colPnl}</span>
+              <span style={{ textAlign:"right" }}>{t.colWhen}</span>
+            </div>
+            {filteredFeed.length === 0 ? (
+              <div style={{ padding:"50px 0", textAlign:"center", fontSize:12, color:C.textDim }}>{t.noTrades}</div>
+            ) : filteredFeed.map(item => (
+              <div key={item.id} className="hrow" style={{
+                display:"grid", gridTemplateColumns:"1fr 60px 90px 90px 60px",
+                padding:"9px 14px", alignItems:"center",
+                borderBottom:`1px solid ${C.border}`,
+                background:C.surface, animation:"slideUp 0.25s ease",
+              }}>
+                <div style={{ display:"flex", alignItems:"center", gap:9, minWidth:0 }}>
+                  <TraderAvatar trader={item.trader||{}} size={30} />
+                  <div style={{ minWidth:0 }}>
+                    <a href={traderLink(item.wallet)} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize:12, fontWeight:600, display:"block",
+                        whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                      {item.trader?.userName || item.wallet?.slice(0,14) || t.anonymous}
+                      {item.trader?.verifiedBadge && <span style={{ marginLeft:4, fontSize:9, color:C.textDim }}>{t.verified}</span>}
+                    </a>
+                    <a href={item.marketSlug ? marketLink(item.marketSlug) : "#"} target={item.marketSlug ? "_blank" : "_self"} rel="noopener noreferrer"
+                      style={{ fontSize:10, color:C.textMid, display:"block",
+                        whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", maxWidth:320 }}>
+                      {item.market}
+                    </a>
                   </div>
-                ))}
+                </div>
+                <div style={{ textAlign:"center" }}>
+                  <span style={{ fontSize:11, fontWeight:600, fontFamily:"'DM Mono',monospace",
+                    color: item.outcome==="YES" ? C.text : C.textMid }}>
+                    {item.outcome}
+                  </span>
+                </div>
+                <div style={{ textAlign:"right", fontSize:12, fontFamily:"'DM Mono',monospace" }}>
+                  {formatUSD(item.size)}
+                </div>
+                <div style={{ textAlign:"right" }}><PnlBadge val={item.pnl} /></div>
+                <div style={{ textAlign:"right", fontSize:9, color:C.textDim }}>{timeAgo(item.ts, t)}</div>
               </div>
-            )}
+            ))}
           </div>
         )}
 
-        {/* TRADERS */}
+        {/* ════ TRADERS ════ */}
         {tab === "traders" && (
           <div>
-            {loading && traders.length === 0 ? (
-              <div style={{ textAlign:"center", padding:60, color:"#2d4a6a" }}>
-                <div style={{ fontSize:30, animation:"pulse 1s infinite" }}>⟳</div>
-                <div style={{ marginTop:8 }}>Leaderboard yükleniyor...</div>
-              </div>
-            ) : (
-              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                {traders.map((trader, i) => (
-                  <div key={trader.proxyWallet}>
-                    <div className="row-hover" onClick={() => {
-                      setExpandedTrader(expandedTrader === trader.proxyWallet ? null : trader.proxyWallet);
-                      if (!positions[trader.proxyWallet]) fetchPositions(trader.proxyWallet);
-                    }} style={{
-                      background: expandedTrader === trader.proxyWallet ? "rgba(30,58,95,0.5)" : "rgba(13,20,33,0.8)",
-                      border:`1px solid ${expandedTrader === trader.proxyWallet ? "#60a5fa40" : "#1a2940"}`,
-                      borderRadius: expandedTrader === trader.proxyWallet ? "10px 10px 0 0" : 10,
-                      padding:"13px 17px", display:"flex", alignItems:"center", gap:13, transition:"all 0.2s"
-                    }}>
-                      <div style={{
-                        width:32, height:32, borderRadius:8, flexShrink:0,
-                        background: i < 3 ? ["linear-gradient(135deg,#ffd700,#ffa500)",
-                          "linear-gradient(135deg,#c0c0c0,#a0a0a0)",
-                          "linear-gradient(135deg,#cd7f32,#a05020)"][i]
-                          : "rgba(30,42,68,0.8)",
-                        border: i < 3 ? "none" : "1px solid #1e2a44",
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                        fontSize:12, fontWeight:800, color: i < 3 ? "#1a1a1a" : "#4a6a8a"
-                      }}>#{i+1}</div>
-                      <TraderAvatar trader={trader} size={40} />
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          <span style={{ fontWeight:700, fontSize:14, color:"#e2e8f0" }}>
-                            {trader.userName || trader.proxyWallet?.slice(0,14) + "..."}
-                          </span>
-                          {trader.verifiedBadge && (
-                            <span style={{ background:"rgba(96,165,250,0.12)", color:"#60a5fa",
-                              border:"1px solid #60a5fa30", borderRadius:4, padding:"1px 5px",
-                              fontSize:10, fontWeight:700 }}>✓ VERİFİED</span>
-                          )}
-                        </div>
-                        <div style={{ fontSize:10, color:"#2d4a6a", marginTop:2 }}>
-                          {trader.proxyWallet?.slice(0,8)}...{trader.proxyWallet?.slice(-6)}
-                        </div>
-                      </div>
-                      <div style={{ display:"flex", gap:18, alignItems:"center", flexShrink:0 }}>
-                        <div style={{ textAlign:"center" }}>
-                          <div style={{ fontSize:10, color:"#4a6a8a", marginBottom:2 }}>PNL</div>
-                          <PnlBadge val={trader.pnl} />
-                        </div>
-                        <div style={{ textAlign:"center" }}>
-                          <div style={{ fontSize:10, color:"#4a6a8a", marginBottom:2 }}>VOL</div>
-                          <span style={{ fontSize:13, color:"#a78bfa", fontWeight:600 }}>{formatUSD(trader.vol)}</span>
-                        </div>
-                        {trader.winRate && (
-                          <div style={{ textAlign:"center" }}>
-                            <div style={{ fontSize:10, color:"#4a6a8a", marginBottom:2 }}>WIN%</div>
-                            <span style={{ fontSize:13, color:"#fbbf24", fontWeight:600 }}>
-                              {Math.round(trader.winRate * 100)}%
-                            </span>
-                          </div>
-                        )}
-                        <span style={{ color:"#4a6a8a", fontSize:13 }}>
-                          {expandedTrader === trader.proxyWallet ? "▲" : "▼"}
-                        </span>
+            <div style={{ display:"grid", gridTemplateColumns:"36px 1fr 130px 110px 70px 24px",
+              padding:"5px 14px", fontSize:9, color:C.textDim, letterSpacing:"0.08em",
+              borderBottom:`1px solid ${C.border}`, background:C.surface }}>
+              <span>{t.colRank}</span><span>TRADER</span>
+              <span style={{ textAlign:"right" }}>{t.colPnl}</span>
+              <span style={{ textAlign:"right" }}>{t.colVol}</span>
+              <span style={{ textAlign:"right" }}>{t.colWin}</span>
+              <span />
+            </div>
+            {loading && !filteredTraders.length ? (
+              <div style={{ padding:"50px 0", textAlign:"center", fontSize:12, color:C.textDim }}>{t.loading}</div>
+            ) : filteredTraders.map((trader, i) => (
+              <div key={trader.proxyWallet}>
+                <div className="hrow" onClick={() => {
+                  setExpanded(expandedTrader===trader.proxyWallet ? null : trader.proxyWallet);
+                  if (!positions[trader.proxyWallet]) fetchPositions(trader.proxyWallet);
+                }} style={{
+                  display:"grid", gridTemplateColumns:"36px 1fr 130px 110px 70px 24px",
+                  padding:"10px 14px", alignItems:"center",
+                  borderBottom:`1px solid ${C.border}`, background:C.surface,
+                }}>
+                  <div style={{ fontSize:11, fontWeight:600, color: i<3?C.text:C.textDim }}>{i+1}</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:9, minWidth:0 }}>
+                    <TraderAvatar trader={trader} size={30} />
+                    <div style={{ minWidth:0 }}>
+                      <a href={traderLink(trader.proxyWallet)} target="_blank" rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        style={{ fontSize:13, fontWeight:600, display:"block",
+                          whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                        {trader.userName || trader.proxyWallet?.slice(0,16)+"..."}
+                        {trader.verifiedBadge && <span style={{ marginLeft:4, fontSize:9, color:C.textDim }}>{t.verified}</span>}
+                      </a>
+                      <div style={{ fontSize:9, color:C.textDim }}>
+                        {trader.proxyWallet?.slice(0,8)}…{trader.proxyWallet?.slice(-5)}
                       </div>
                     </div>
+                  </div>
+                  <div style={{ textAlign:"right" }}><PnlBadge val={trader.pnl} /></div>
+                  <div style={{ textAlign:"right", fontSize:11, fontFamily:"'DM Mono',monospace", color:C.textMid }}>
+                    {formatUSD(trader.vol)}
+                  </div>
+                  <div style={{ textAlign:"right", fontSize:11, fontFamily:"'DM Mono',monospace" }}>
+                    {trader.winRate ? Math.round(trader.winRate*100)+"%" : "—"}
+                  </div>
+                  <div style={{ textAlign:"right", fontSize:10, color:C.textDim }}>
+                    {expandedTrader===trader.proxyWallet ? "▲" : "▼"}
+                  </div>
+                </div>
 
-                    {expandedTrader === trader.proxyWallet && (
-                      <div style={{
-                        background:"rgba(8,15,26,0.97)", border:"1px solid #60a5fa25",
-                        borderTop:"none", borderRadius:"0 0 10px 10px",
-                        padding:"15px 17px", animation:"fadeIn 0.2s ease"
-                      }}>
-                        <div style={{ fontSize:10, color:"#4a6a8a", marginBottom:10, letterSpacing:"0.1em" }}>
-                          AKTİF POZİSYONLAR
-                        </div>
-                        {positions[trader.proxyWallet] === undefined ? (
-                          <div style={{ color:"#4a6a8a", fontSize:12, animation:"pulse 1s infinite" }}>Yükleniyor...</div>
-                        ) : positions[trader.proxyWallet]?.length === 0 ? (
-                          <div style={{ color:"#2d4a6a", fontSize:12 }}>Açık pozisyon bulunamadı.</div>
-                        ) : (
-                          <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
-                            {(positions[trader.proxyWallet] || []).slice(0, 6).map((pos, j) => (
-                              <div key={pos.conditionId || pos.marketId || `pos-${j}`} style={{
-                                background:"rgba(30,42,68,0.4)", border:"1px solid #1a2940",
-                                borderRadius:7, padding:"9px 13px",
-                                display:"flex", alignItems:"center", gap:10
-                              }}>
-                                <span style={{
-                                  background: (pos.outcome === "YES" || pos.currentValue > 0.5) ? "rgba(0,230,118,0.1)" : "rgba(255,70,85,0.1)",
-                                  color: (pos.outcome === "YES" || pos.currentValue > 0.5) ? "#00e676" : "#ff4655",
-                                  border:`1px solid ${(pos.outcome === "YES" || pos.currentValue > 0.5) ? "#00e67630" : "#ff465530"}`,
-                                  borderRadius:5, padding:"2px 8px", fontSize:11, fontWeight:700
-                                }}>{pos.outcome || (pos.currentValue > 0.5 ? "YES" : "NO")}</span>
-                                <span style={{ flex:1, fontSize:12, color:"#a0b4c8" }}>
-                                  {pos.title || pos.market || "Market"}
-                                </span>
-                                <span style={{ fontSize:12, color:"#e2e8f0", fontWeight:600 }}>
-                                  {formatUSD(pos.currentValue || pos.size)}
-                                </span>
-                              </div>
-                            ))}
+                {expandedTrader===trader.proxyWallet && (
+                  <div style={{ background:C.bg, borderBottom:`1px solid ${C.border}`,
+                    padding:"12px 14px 12px 59px", animation:"slideUp 0.2s ease" }}>
+                    <div style={{ fontSize:9, color:C.textDim, letterSpacing:"0.1em", marginBottom:8 }}>
+                      {t.activePositions}
+                    </div>
+                    {positions[trader.proxyWallet] === undefined ? (
+                      <div style={{ fontSize:11, color:C.textDim }}>{t.loading}</div>
+                    ) : !positions[trader.proxyWallet]?.length ? (
+                      <div style={{ fontSize:11, color:C.textDim }}>{t.noPositions}</div>
+                    ) : (
+                      <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+                        {positions[trader.proxyWallet].slice(0,6).map((pos,j) => (
+                          <div key={j} style={{ display:"flex", alignItems:"center", gap:9,
+                            padding:"6px 10px", background:C.surface,
+                            border:`1px solid ${C.border}`, borderRadius:5 }}>
+                            <span style={{ fontSize:10, fontWeight:600, fontFamily:"'DM Mono',monospace",
+                              color:(pos.outcome==="YES"||pos.currentValue>0.5)?C.text:C.textMid, width:28 }}>
+                              {pos.outcome||(pos.currentValue>0.5?"YES":"NO")}
+                            </span>
+                            <a href={pos.slug ? marketLink(pos.slug) : "#"} target={pos.slug ? "_blank" : "_self"} rel="noopener noreferrer"
+                              style={{ flex:1, fontSize:11, color:C.textMid,
+                                whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                              {pos.title||pos.market||"Market"}
+                            </a>
+                            <span style={{ fontSize:11, fontFamily:"'DM Mono',monospace" }}>
+                              {formatUSD(pos.currentValue||pos.size)}
+                            </span>
                           </div>
-                        )}
-                        <div style={{ marginTop:12, display:"flex", gap:8 }}>
-                          <a href={`https://polymarket.com/profile/${trader.proxyWallet}`}
-                            target="_blank" rel="noopener noreferrer"
-                            style={{ background:"rgba(96,165,250,0.1)", border:"1px solid #60a5fa30",
-                              borderRadius:6, padding:"6px 14px", color:"#60a5fa",
-                              fontSize:11, textDecoration:"none", fontWeight:600 }}>
-                            🔗 Polymarket Profil
-                          </a>
-                          <button onClick={() => addNotif(`📌 ${trader.userName || trader.proxyWallet?.slice(0,10)} takibe alındı!`, "info", trader)}
-                            style={{
-                              background:"rgba(167,139,250,0.1)", border:"1px solid #a78bfa30",
-                              borderRadius:6, padding:"6px 14px", cursor:"pointer",
-                              color:"#a78bfa", fontSize:11, fontWeight:600,
-                              fontFamily:"'IBM Plex Mono',monospace"
-                            }}>⭐ Takip Et</button>
-                        </div>
+                        ))}
                       </div>
                     )}
+                    <a href={traderLink(trader.proxyWallet)} target="_blank" rel="noopener noreferrer"
+                      style={{ display:"inline-block", marginTop:10, fontSize:10, color:C.textMid,
+                        borderBottom:`1px solid ${C.border}` }}>
+                      {t.viewOnPoly}
+                    </a>
                   </div>
-                ))}
+                )}
               </div>
-            )}
+            ))}
           </div>
         )}
 
-        {/* NOTIFICATIONS */}
+        {/* ════ NOTIFICATIONS ════ */}
         {tab === "notifications" && (
           <div>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-              <div style={{ fontSize:12, color:"#4a6a8a" }}>
-                Toplam <span style={{ color:"#60a5fa" }}>{notifLog.length}</span> bildirim
+            <div style={{ background:C.surface, border:`1px solid ${C.border}`,
+              borderRadius:8, padding:"12px 14px", marginBottom:12 }}>
+              <div style={{ fontSize:9, color:C.textDim, letterSpacing:"0.1em", marginBottom:8 }}>
+                {t.notifFiltersTitle}
               </div>
-              <button onClick={() => setNotifLog([])} style={{
-                background:"rgba(255,70,85,0.08)", border:"1px solid #ff465530",
-                borderRadius:6, padding:"5px 12px", cursor:"pointer",
-                color:"#ff4655", fontSize:11, fontFamily:"'IBM Plex Mono',monospace"
-              }}>Temizle</button>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                {t.notifTypes.map(({ key, label, icon }) => {
+                  const on = notifFilters[key];
+                  return (
+                    <button key={key} className="pill"
+                      onClick={() => setNotifFilters(f => ({...f,[key]:!f[key]}))}
+                      style={{
+                        background: on ? C.text : "none",
+                        border:`1px solid ${on ? C.text : C.border}`,
+                        borderRadius:20, padding:"4px 12px",
+                        color: on ? (dark?"#111":"#fff") : C.textMid,
+                        fontSize:10, fontWeight:500, fontFamily:"'DM Mono',monospace",
+                        display:"flex", alignItems:"center", gap:5, transition:"all 0.12s"
+                      }}>
+                      <span>{icon}</span>
+                      <span>{label}</span>
+                      <span style={{ fontSize:9, opacity:0.55 }}>{on ? t.notifsOpen : t.notifsClosed}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div style={{ background:"rgba(13,20,33,0.8)", border:"1px solid #1a2940",
-              borderRadius:10, padding:"15px 17px", marginBottom:14 }}>
-              <div style={{ fontSize:11, color:"#60a5fa", fontWeight:700, marginBottom:10 }}>
-                🔧 BİLDİRİM AYARLARI
-              </div>
-              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                {[
-                  { label:"Yeni Pozisyonlar", icon:"📊" },
-                  { label:"PnL Değişimi", icon:"💰" },
-                  { label:"Yeni Traderlar", icon:"🆕" },
-                  { label:"Büyük İşlemler", icon:"🐋" },
-                ].map(opt => (
-                  <div key={opt.label} style={{
-                    background:"rgba(96,165,250,0.1)", border:"1px solid #60a5fa40",
-                    borderRadius:8, padding:"7px 13px", color:"#60a5fa",
-                    fontSize:12, fontWeight:600, cursor:"pointer",
-                    display:"flex", alignItems:"center", gap:5
-                  }}>
-                    {opt.icon} {opt.label} <span style={{ color:"#00e676" }}>●</span>
-                  </div>
-                ))}
-              </div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+              <div style={{ fontSize:10, color:C.textDim }}>{t.notifRecords(notifLog.length)}</div>
+              <button onClick={() => setNotifLog([])} style={{
+                background:"none", border:`1px solid ${C.border}`, borderRadius:5,
+                padding:"3px 9px", fontSize:9, color:C.textMid, fontFamily:"'DM Mono',monospace"
+              }}>{t.clearNotifs}</button>
             </div>
 
             {notifLog.length === 0 ? (
-              <div style={{ textAlign:"center", padding:"50px 20px", color:"#2d4a6a" }}>
-                <div style={{ fontSize:40, marginBottom:10 }}>🔔</div>
-                <div>Henüz bildirim yok</div>
+              <div style={{ padding:"50px 0", textAlign:"center", fontSize:12, color:C.textDim }}>
+                {t.noNotifs}
               </div>
-            ) : (
-              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                {notifLog.map((n, i) => (
-                  <div key={n.id} style={{
-                    background:"rgba(13,20,33,0.8)",
-                    border:`1px solid ${notifColor[n.type] || "#60a5fa"}20`,
-                    borderLeft:`3px solid ${notifColor[n.type] || "#60a5fa"}`,
-                    borderRadius:8, padding:"11px 15px",
-                    display:"flex", alignItems:"center", gap:11,
-                    opacity: i > 25 ? 0.5 : 1
-                  }}>
-                    {n.trader && <TraderAvatar trader={n.trader} size={30} />}
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:12, color:"#c0cce0" }}>{n.msg}</div>
-                    </div>
-                    <div style={{ fontSize:10, color:"#2d4a6a", flexShrink:0 }}>{timeAgo(n.ts)}</div>
-                  </div>
-                ))}
+            ) : notifLog.map((n,i) => (
+              <div key={n.id} style={{
+                display:"flex", alignItems:"center", gap:9,
+                padding:"9px 14px", borderBottom:`1px solid ${C.border}`,
+                background:C.surface, opacity: i > 30 ? 0.4 : 1
+              }}>
+                {n.trader && <TraderAvatar trader={n.trader} size={26} />}
+                <div style={{ flex:1, fontSize:11, color:C.text, lineHeight:1.4 }}>{n.msg}</div>
+                <div style={{ fontSize:9, color:C.textDim, flexShrink:0 }}>{timeAgo(n.ts, t)}</div>
               </div>
-            )}
+            ))}
           </div>
         )}
       </div>
 
-      <div style={{ borderTop:"1px solid #1a2940", padding:"12px 24px", marginTop:20,
-        display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <div style={{ fontSize:10, color:"#1e3a5f" }}>Polymarket Data API · 30s otomatik yenileme</div>
-        <div style={{ fontSize:10, color:"#1e3a5f" }}>{new Date().toLocaleString("tr-TR")}</div>
+      {/* Footer */}
+      <div style={{ borderTop:`1px solid ${C.border}`, padding:"10px 20px", marginTop:16,
+        display:"flex", justifyContent:"space-between", fontSize:9, color:C.textDim }}>
+        <span>{t.footerApi}</span>
+        <span>{new Date().toLocaleString(lang==="tr" ? "tr-TR" : "en-US")}</span>
       </div>
     </div>
   );
