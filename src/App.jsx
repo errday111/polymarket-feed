@@ -155,13 +155,14 @@ function generateDemo() {
     winRate:Math.random()*0.35+0.55,
   }));
 }
+/* Demo markets — no slugs to avoid 404. Links go to Polymarket search. */
 const DEMO_MARKETS = [
-  {title:"Fed rate cut in May 2025?",      slug:"fed-rate-cut-may-2025"},
-  {title:"Bitcoin >$100K by June?",         slug:"bitcoin-100k-june-2025"},
-  {title:"Trump approval >50% in Q2?",      slug:"trump-approval-q2-2025"},
-  {title:"AI regulation passed in 2025?",   slug:"ai-regulation-2025"},
-  {title:"Nvidia exceeds $200?",            slug:"nvidia-200-2025"},
-  {title:"France in Euro 2025 final?",      slug:"euro-2025-france-final"},
+  {title:"Fed rate cut in May 2025?",      slug:null},
+  {title:"Bitcoin >$100K by June?",         slug:null},
+  {title:"Trump approval >50% in Q2?",      slug:null},
+  {title:"AI regulation passed in 2025?",   slug:null},
+  {title:"Nvidia exceeds $200?",            slug:null},
+  {title:"France in Euro 2025 final?",      slug:null},
 ];
 
 function TraderAvatar({trader, size=32}) {
@@ -185,24 +186,27 @@ function PnlBadge({val}) {
 }
 
 
-/* ══ DismissibleToast — swipe up or click X to dismiss ══ */
+/* ══ DismissibleToast — swipe up or click X to dismiss, click body to open link ══ */
 function DismissibleToast({ n, dark: isDark, onDismiss }) {
   const theme = isDark ? DARK : LIGHT;
   const el    = useRef(null);
-  const drag  = useRef({ active:false, startY:0, startX:0, dy:0 });
-  const [offset, setOffset] = useState({y:0, x:0, opacity:1});
+  const drag  = useRef({ active:false, startY:0, startX:0, dy:0, dx:0, moved:false });
+  const [offset, setOffset]   = useState({y:0, x:0, opacity:1});
   const [dismissed, setDismissed] = useState(false);
+
+  const url = n.url || (n.trader?.proxyWallet ? `${POLY_BASE}/profile/${n.trader.proxyWallet}` : null);
 
   function dismiss() {
     if (dismissed) return;
     setDismissed(true);
-    setOffset({y:-80, x:0, opacity:0});
-    setTimeout(onDismiss, 280);
+    setOffset({y:-90, x:0, opacity:0});
+    setTimeout(onDismiss, 260);
   }
 
-  // pointer events (works for both mouse and touch)
   function onPointerDown(e) {
-    drag.current = { active:true, startY:e.clientY, startX:e.clientX, dy:0, dx:0 };
+    // Don't start drag on close button
+    if (e.target.closest('[data-close]')) return;
+    drag.current = { active:true, startY:e.clientY, startX:e.clientX, dy:0, dx:0, moved:false };
     el.current?.setPointerCapture(e.pointerId);
   }
   function onPointerMove(e) {
@@ -211,49 +215,24 @@ function DismissibleToast({ n, dark: isDark, onDismiss }) {
     const dx = e.clientX - drag.current.startX;
     drag.current.dy = dy;
     drag.current.dx = dx;
+    if (Math.abs(dy) > 4 || Math.abs(dx) > 4) drag.current.moved = true;
     if (dy < 0) {
       const progress = Math.min(Math.abs(dy) / 80, 1);
-      setOffset({ y: dy, x: dx * 0.3, opacity: 1 - progress * 0.6 });
+      setOffset({ y: dy, x: dx * 0.2, opacity: 1 - progress * 0.6 });
     }
   }
   function onPointerUp(e) {
     if (!drag.current.active) return;
     drag.current.active = false;
-    if (drag.current.dy < -45) {
+    if (drag.current.dy < -44) {
       dismiss();
+    } else if (!drag.current.moved && url) {
+      // Tap without drag → open link
+      window.open(url, "_blank", "noopener,noreferrer");
     } else {
-      // snap back
       setOffset({ y:0, x:0, opacity:1 });
     }
   }
-
-  const url = n.url || (n.trader?.proxyWallet ? `${POLY_BASE}/profile/${n.trader.proxyWallet}` : null);
-
-  const inner = (
-    <div style={{
-      background: isDark ? "rgba(18,18,18,0.88)" : "rgba(255,255,255,0.88)",
-      backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)",
-      border:`1px solid ${isDark?"rgba(255,255,255,0.08)":"rgba(0,0,0,0.08)"}`,
-      borderLeft:`3px solid ${theme.text}`,
-      borderRadius:9, padding:"10px 12px 10px 13px",
-      boxShadow:`0 4px 22px ${isDark?"rgba(0,0,0,0.55)":"rgba(0,0,0,0.12)"}`,
-      display:"flex", alignItems:"flex-start", gap:8,
-      userSelect:"none", WebkitUserSelect:"none",
-    }}>
-      <div style={{flex:1, minWidth:0}}>
-        <div style={{fontSize:12,color:theme.text,lineHeight:1.45,
-          wordBreak:"break-word"}}>{n.msg}</div>
-        <div style={{fontSize:10,color:theme.textDim,marginTop:3}}>{timeAgo(n.ts)}</div>
-      </div>
-      <button
-        onClick={e=>{ e.preventDefault(); e.stopPropagation(); dismiss(); }}
-        style={{background:"none",border:"none",color:theme.textDim,
-          fontSize:14,padding:"0 0 0 4px",flexShrink:0,lineHeight:1,
-          cursor:"pointer",opacity:0.6}}>
-        ×
-      </button>
-    </div>
-  );
 
   return (
     <div
@@ -261,21 +240,50 @@ function DismissibleToast({ n, dark: isDark, onDismiss }) {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={()=>{ drag.current.active=false; setOffset({y:0,x:0,opacity:1}); }}
       style={{
         transform:`translateY(${offset.y}px) translateX(${offset.x}px)`,
         opacity: offset.opacity,
         transition: drag.current.active ? "none" : "transform 0.25s ease, opacity 0.25s ease",
-        cursor: url ? "pointer" : "grab",
-        touchAction:"none",
+        touchAction:"none", userSelect:"none", WebkitUserSelect:"none",
       }}
     >
-      {url ? (
-        <a href={url} target="_blank" rel="noopener noreferrer"
-          style={{display:"block",textDecoration:"none",color:"inherit"}}>
-          {inner}
-        </a>
-      ) : inner}
+      <div style={{
+        background: isDark ? "rgba(18,18,18,0.9)" : "rgba(255,255,255,0.9)",
+        backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)",
+        border:`1px solid ${isDark?"rgba(255,255,255,0.09)":"rgba(0,0,0,0.09)"}`,
+        borderLeft:`3px solid ${theme.text}`,
+        borderRadius:9,
+        boxShadow:`0 4px 22px ${isDark?"rgba(0,0,0,0.55)":"rgba(0,0,0,0.12)"}`,
+        display:"flex", alignItems:"stretch", overflow:"hidden",
+        cursor: url ? "pointer" : "grab",
+      }}>
+        {/* Body — clickable area */}
+        <div style={{flex:1, padding:"10px 8px 10px 13px", minWidth:0}}>
+          <div style={{fontSize:12, color:theme.text, lineHeight:1.45,
+            wordBreak:"break-word"}}>{n.msg}</div>
+          {url && (
+            <div style={{fontSize:9, color:theme.textDim, marginTop:3, letterSpacing:"0.04em"}}>
+              tap to open →
+            </div>
+          )}
+          <div style={{fontSize:10, color:theme.textDim, marginTop:2}}>{timeAgo(n.ts)}</div>
+        </div>
+        {/* Close button — isolated from drag and link */}
+        <button
+          data-close="true"
+          onPointerDown={e=>e.stopPropagation()}
+          onClick={e=>{ e.stopPropagation(); dismiss(); }}
+          style={{
+            background:"none", border:"none", borderLeft:`1px solid ${isDark?"rgba(255,255,255,0.07)":"rgba(0,0,0,0.07)"}`,
+            color:theme.textDim, fontSize:16, width:36, flexShrink:0,
+            cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+            opacity:0.55, transition:"opacity 0.15s",
+          }}
+          onMouseEnter={e=>e.currentTarget.style.opacity="1"}
+          onMouseLeave={e=>e.currentTarget.style.opacity="0.55"}
+        >×</button>
+      </div>
     </div>
   );
 }
@@ -462,74 +470,147 @@ export default function App() {
     } finally { setLoading(false); }
   },[category,period,addNotif]);
 
-  /* ── positions ── */
+  /* ── positions (for expanded view in Rankings tab) ── */
   const fetchPositions = useCallback(async(wallet)=>{
     try {
-      const res = await fetch(`${API}/v1/positions?user=${wallet}&sizeThreshold=0.01&limit=10`);
+      const res = await fetch(
+        `${API}/v1/positions?user=${wallet}&sizeThreshold=0.01&limit=10`
+      );
       if (!res.ok) throw new Error();
       const data = await res.json();
       const list = Array.isArray(data)?data:(data.results||[]);
       setPositions(p=>({...p,[wallet]:list}));
-      list.slice(0,3).forEach(pos=>{
-        const trader = traders.find(tr=>tr.proxyWallet===wallet);
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  /* ── recent trades → feed (real timestamps via /v1/trades) ── */
+  const fetchRecentTrades = useCallback(async(wallet)=>{
+    try {
+      // /v1/trades gives us actual trade timestamps, not market start dates
+      // Filter: only BUY trades from the last 48 hours
+      const since = Math.floor((Date.now() - 48 * 60 * 60 * 1000) / 1000); // unix seconds
+      const res = await fetch(
+        `${API}/v1/trades?maker=${wallet}&side=BUY&limit=5&start=${since}`
+      );
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const list = Array.isArray(data)?data:(data.results||data.data||[]);
+
+      list.forEach(trade=>{
+        const trader = prevRef.current.find(tr=>tr.proxyWallet===wallet);
+        // trade.timestamp is unix seconds
+        const tradeTs = trade.timestamp
+          ? new Date(trade.timestamp * 1000).toISOString()
+          : null;
+        if (!tradeTs) return;
+
+        // Double-check recency (server filter may be best-effort)
+        const ageMs = Date.now() - new Date(tradeTs).getTime();
+        if (ageMs > 48 * 60 * 60 * 1000) return;
+
+        // Use eventSlug for the link (more reliable than slug)
+        const slug = trade.eventSlug || trade.slug || null;
+
         const item = {
-          id:`${wallet}-${pos.conditionId||Math.random()}`,
-          trader,wallet,
-          market:pos.title||pos.market||"Market",
-          marketSlug:pos.slug||null,
-          outcome:pos.outcome||(pos.currentValue>0.5?"YES":"NO"),
-          size:pos.currentValue||pos.size||0,
-          price:pos.price||pos.avgPrice||0,
-          pnl:pos.cashPnl||pos.pnl||0,
-          ts:pos.startDate||new Date().toISOString(),
+          id:`trade-${wallet}-${trade.transactionHash||trade.conditionId||Math.random()}`,
+          trader, wallet,
+          market: trade.title || trade.market || "Market",
+          marketSlug: (slug && !slug.startsWith("0x")) ? slug : null,
+          outcome: trade.outcome || "YES",
+          size: trade.size || trade.takerAmountFilled || 0,
+          price: trade.price || 0,
+          pnl: 0, // trades don't have pnl yet
+          ts: tradeTs,
+          isNew: true,
         };
+
         setFeed(f=>f.some(x=>x.id===item.id)?f:[item,...f].slice(0,80));
+
         const _notifTrader = item.marketSlug
           ? {...(trader||{}), _notifUrl:marketLink(item.marketSlug)}
           : trader;
-        addNotif(S.notifMsgPosition(trader?.userName||wallet.slice(0,10),item.market.slice(0,40)),"position",_notifTrader);
+        addNotif(
+          S.notifMsgPosition(trader?.userName||wallet.slice(0,10), item.market.slice(0,40)),
+          "position", _notifTrader
+        );
       });
     } catch {}
-  },[traders,addNotif]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[addNotif]);
 
-  /* ── demo sim ── */
+  /* ── demo sim — only runs when API returns demo data, timestamps always NOW ── */
+  const isDemoData = traders.length > 0 && traders[0]?.userName === "CryptoProphet";
   useEffect(()=>{
-    if (!traders.length) return;
+    if (!traders.length || !isDemoData) return;
     const iv = setInterval(()=>{
       const trader = traders[Math.floor(Math.random()*Math.min(5,traders.length))];
       if (!trader) return;
       const m = DEMO_MARKETS[Math.floor(Math.random()*DEMO_MARKETS.length)];
       const item = {
         id:`sim-${Date.now()}-${Math.random()}`,
-        trader,wallet:trader.proxyWallet,
-        market:m.title,marketSlug:m.slug,
+        trader, wallet:trader.proxyWallet,
+        market:m.title, marketSlug:null,
         outcome:Math.random()>0.5?"YES":"NO",
         size:Math.random()*50000+500,
         price:Math.random()*0.8+0.1,
         pnl:(Math.random()-0.4)*8000,
-        ts:new Date().toISOString(),isNew:true,
+        ts:new Date().toISOString(), // always current time
+        isNew:true,
       };
-      setFeed(f=>[item,...f].slice(0,80));
-      addNotif(S.notifMsgPosition(trader.userName||trader.proxyWallet?.slice(0,10),m.title),"position",
-        {...trader, _notifUrl:`${POLY_BASE}/event/${m.slug}`});
-    },10_000);
+      setFeed(f=>[item,...f].slice(0,60));
+      addNotif(
+        S.notifMsgPosition(trader.userName||trader.proxyWallet?.slice(0,10), m.title),
+        "position",
+        {...trader, _notifUrl:`${POLY_BASE}/profile/${trader.proxyWallet}`}
+      );
+    },12_000);
     return ()=>clearInterval(iv);
-  },[traders,addNotif]);
+  },[traders, isDemoData, addNotif]);
+
+  // Clear feed + positions when category/period changes
+  useEffect(()=>{
+    setFeed([]);
+    setPositions({});
+    positionsFetchedRef.current = false; // allow re-fetch for new trader set
+  },[category,period]);
 
   useEffect(()=>{
     fetchLeaderboard();
     const iv=setInterval(fetchLeaderboard,30_000);
     return ()=>clearInterval(iv);
   },[fetchLeaderboard]);
-  useEffect(()=>{ if(traders.length) traders.slice(0,5).forEach(tr=>fetchPositions(tr.proxyWallet)); },[traders]);
+
+  // Poll recent trades every 2 minutes for live feed updates
+  useEffect(()=>{
+    if (!traders.length) return;
+    const iv = setInterval(()=>{
+      traders.slice(0,5).forEach(tr=>fetchRecentTrades(tr.proxyWallet));
+    }, 120_000);
+    return ()=>clearInterval(iv);
+  },[traders, fetchRecentTrades]);
+  const positionsFetchedRef = useRef(false);
+  useEffect(()=>{
+    if (!traders.length) return;
+    if (positionsFetchedRef.current) return;
+    positionsFetchedRef.current = true;
+    // fetchPositions = for expanded panel (all open positions)
+    // fetchRecentTrades = for live feed (real trade timestamps, last 48h only)
+    traders.slice(0,5).forEach(tr=>{
+      fetchPositions(tr.proxyWallet);
+      fetchRecentTrades(tr.proxyWallet);
+    });
+  },[traders]); // intentionally run once per trader set
 
   /* filtered */
   const q = search.toLowerCase();
   const filteredTraders = traders.filter(tr=>!q||(tr.userName||"").toLowerCase().includes(q)||(tr.proxyWallet||"").toLowerCase().includes(q));
-  const filteredFeed    = feed.filter(item=>!q||(item.market||"").toLowerCase().includes(q)||(item.trader?.userName||"").toLowerCase().includes(q));
+  const filteredFeed    = [...feed]
+    .sort((a,b)=>new Date(b.ts)-new Date(a.ts)) // newest first
+    .filter(item=>!q||(item.market||"").toLowerCase().includes(q)||(item.trader?.userName||"").toLowerCase().includes(q));
 
-  const traderLink = w=>`${POLY_BASE}/profile/${w}`;
-  const marketLink = s=>s?`${POLY_BASE}/event/${s}`:"#";
+  const traderLink = w=>w&&w!=='undefined'?`${POLY_BASE}/profile/${w}`:null;
+  const marketLink = s=>(s&&!s.startsWith('0x'))?`${POLY_BASE}/event/${s}`:null;
 
   return (
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'DM Mono','Courier New',monospace",
@@ -569,7 +650,8 @@ export default function App() {
 
       {/* ══ NEWS CAROUSEL — sticky top:0, one item at a time ══ */}
       {(()=>{
-        const item = newsItems[newsIdx] || newsItems[0];
+        const safeIdx = newsItems.length ? newsIdx % newsItems.length : 0;
+        const item = newsItems[safeIdx] || newsItems[0];
         const itemUrl = item?.url;
         const itemText = item?.text || item || "";
         const total = newsItems.length;
@@ -669,7 +751,7 @@ export default function App() {
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           <div style={{display:"flex",flexDirection:"column",gap:2}}>
             <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:16,fontWeight:700,letterSpacing:"-0.04em"}}>{S.appName}</span>
-            <a href="https://polycule.trade/join/m8nznt" target="_blank" rel="noopener noreferrer"
+            <a href="https://t.me/PolyGunSniperBot?start=ref_erdidurmus" target="_blank" rel="noopener noreferrer"
               style={{fontSize:9,fontWeight:700,color:"#a855f7",letterSpacing:"0.02em",
                 textDecoration:"none",lineHeight:1,whiteSpace:"nowrap"}}
               onMouseEnter={e=>e.currentTarget.style.color="#c084fc"}
@@ -887,22 +969,36 @@ export default function App() {
               <div key={item.id} className="hrow feed-grid" style={{display:"grid",
                 gridTemplateColumns:"1fr 56px 88px 88px 56px",
                 padding:"9px 12px",alignItems:"center",
-                borderBottom:`1px solid ${C.border}`,background:C.surface,animation:"slideUp 0.25s ease"}}>
+                borderBottom:`1px solid ${C.border}`,background:C.surface,
+                animation:item.isNew?"slideUp 0.25s ease":"none"}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
                   <TraderAvatar trader={item.trader||{}} size={28}/>
                   <div style={{minWidth:0}}>
-                    <a href={traderLink(item.wallet)} target="_blank" rel="noopener noreferrer"
-                      style={{fontSize:12,fontWeight:600,display:"block",
+                    {traderLink(item.wallet) ? (
+                      <a href={traderLink(item.wallet)} target="_blank" rel="noopener noreferrer"
+                        style={{fontSize:12,fontWeight:600,display:"block",
+                          whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                        {item.trader?.userName||item.wallet?.slice(0,12)||S.anonymous}
+                        {item.trader?.verifiedBadge&&<span style={{marginLeft:3,fontSize:9,color:C.textDim}}>{S.verified}</span>}
+                      </a>
+                    ) : (
+                      <span style={{fontSize:12,fontWeight:600,display:"block",
+                        whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:C.text}}>
+                        {item.trader?.userName||S.anonymous}
+                      </span>
+                    )}
+                    {marketLink(item.marketSlug) ? (
+                      <a href={marketLink(item.marketSlug)} target="_blank" rel="noopener noreferrer"
+                        style={{fontSize:10,color:C.textMid,display:"block",
+                          whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                        {item.market}
+                      </a>
+                    ) : (
+                      <span style={{fontSize:10,color:C.textMid,display:"block",
                         whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                      {item.trader?.userName||item.wallet?.slice(0,12)||S.anonymous}
-                      {item.trader?.verifiedBadge&&<span style={{marginLeft:3,fontSize:9,color:C.textDim}}>{S.verified}</span>}
-                    </a>
-                    <a href={item.marketSlug?marketLink(item.marketSlug):"#"}
-                      target={item.marketSlug?"_blank":"_self"} rel="noopener noreferrer"
-                      style={{fontSize:10,color:C.textMid,display:"block",
-                        whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                      {item.market}
-                    </a>
+                        {item.market}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div style={{textAlign:"center"}}>
@@ -990,11 +1086,18 @@ export default function App() {
                               color:(pos.outcome==="YES"||pos.currentValue>0.5)?C.text:C.textMid,width:26}}>
                               {pos.outcome||(pos.currentValue>0.5?"YES":"NO")}
                             </span>
-                            <a href={pos.slug?marketLink(pos.slug):"#"} target={pos.slug?"_blank":"_self"} rel="noopener noreferrer"
-                              style={{flex:1,fontSize:11,color:C.textMid,
+                            {marketLink(pos.slug) ? (
+                              <a href={marketLink(pos.slug)} target="_blank" rel="noopener noreferrer"
+                                style={{flex:1,fontSize:11,color:C.textMid,
+                                  whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                                {pos.title||pos.market||"Market"}
+                              </a>
+                            ) : (
+                              <span style={{flex:1,fontSize:11,color:C.textMid,
                                 whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                              {pos.title||pos.market||"Market"}
-                            </a>
+                                {pos.title||pos.market||"Market"}
+                              </span>
+                            )}
                             <span style={{fontSize:11,fontFamily:"'DM Mono',monospace",flexShrink:0}}>
                               {formatUSD(pos.currentValue||pos.size)}
                             </span>
